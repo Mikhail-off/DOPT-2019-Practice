@@ -7,7 +7,7 @@
 #include <set>
 #include <cassert>
 
-const int TAIL = 10000;
+const long long MATRIX_SIZE_MAX = 100000000;
 
 class BackpackSolution {
 public:
@@ -141,7 +141,8 @@ int main(int argc, char* argv[]) {
         items[i].Index = i + 1;
     }
 
-    BackpackSolution backpack = solve_backpack_greedy(items, maxWeight - TAIL);
+    int tail = MATRIX_SIZE_MAX / itemsCount;
+    BackpackSolution backpack = solve_backpack_greedy(items, maxWeight - tail);
     
     // смотрим, сколько не хватает до полной вместимости
     int tailMaxWeight = maxWeight - backpack.Weight;
