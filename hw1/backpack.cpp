@@ -7,6 +7,8 @@
 #include <set>
 #include <cassert>
 
+const int TAIL = 10000;
+
 class BackpackSolution {
 public:
     BackpackSolution() {
@@ -139,7 +141,8 @@ int main(int argc, char* argv[]) {
         items[i].Index = i + 1;
     }
 
-    BackpackSolution backpack = solve_backpack_greedy(items, maxWeight);
+    BackpackSolution backpack = solve_backpack_greedy(items, maxWeight - TAIL);
+    
     // смотрим, сколько не хватает до полной вместимости
     int tailMaxWeight = maxWeight - backpack.Weight;
     assert(tailMaxWeight >= 0);
