@@ -23,7 +23,7 @@ def main():
     procs = []
     for test in tests:
         name, ext = os.path.splitext(test)
-        if ext != '.answer':
+        if ext != '.public':
             continue
 
         print('Running ' + test)
