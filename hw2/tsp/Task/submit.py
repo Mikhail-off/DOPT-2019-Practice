@@ -1,8 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Usage example: ./submit.py my_nickname tsp 1.public ./1.solution
 
 import requests
-import HTMLParser
+from html.parser import HTMLParser
 from argparse import ArgumentParser
 
 def main():
@@ -23,7 +23,7 @@ def main():
     if r.status_code == 200 and r.reason == "OK":
         for line in r.text.split("\n"):
             if "<h2>" in line:
-                h = HTMLParser.HTMLParser()
+                h = HTMLParser()
                 line = h.unescape(line).replace("<h2>", "").replace("</h2>", "")
                 print(line)
                 break
