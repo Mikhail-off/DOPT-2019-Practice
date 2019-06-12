@@ -1,3 +1,6 @@
+hw*/Debug*
+hw*/Release*
+hw*/x64*
 hw*/*/Debug*
 hw*/*/Release*
 hw*/*/x64*
