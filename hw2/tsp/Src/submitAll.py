@@ -1,7 +1,7 @@
 import multiprocessing as mp
 import os
 
-solutionDir = 'C:\\DOPT-2019-Practice'
+solutionDir = 'D:\\DOPT-2019-Practice'
 hwName = 'hw2'
 taskName = 'tsp'
 buildPath = os.path.join(solutionDir, hwName,'x64\\Release\\')
@@ -11,7 +11,7 @@ submitPath = os.path.join(solutionDir, hwName, taskName, 'Task', 'submit.py')
 
 testsDir = os.path.join(solutionDir, hwName, taskName, 'Task', 'tests')
 
-myName = 'test_name'
+myName = 'mikhailov_nikita_m_test'
 
 def runOnTest(name):
     testName = name + '.public'
@@ -22,6 +22,7 @@ def runOnTest(name):
 
 def submitTest(name):
     testName = name + '.public'
+    testName = os.path.split(testName)[-1]
     ansName = name + '.answer'
     cmd = ' '.join(['python', submitPath, myName, taskName, testName, ansName])
     print(cmd)

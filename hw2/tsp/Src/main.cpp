@@ -5,16 +5,17 @@
 #include <assert.h>
 #include <set>
 #include <fstream>
+#include <iomanip> 
 
-const size_t MAX_ITER = 10000000;
+const size_t MAX_ITER = 70000000;
 const size_t MEMORY_LIMIT = 7000;
-const size_t EDGES_RATIO = 6;
+const size_t EDGES_RATIO = 100;
 
 typedef unsigned short int vertex_t;
 
 struct Point {
-	float x;
-	float y;
+	double x;
+	double y;
 
 	static double Distance( const Point& p1, const Point& p2 )
 	{
@@ -23,9 +24,9 @@ struct Point {
 };
 
 struct Edge {
+	float Weight;
 	vertex_t From;
 	vertex_t To;
-	float Weight;
 };
 
 bool operator < ( const Edge& e1, const Edge& e2 )
@@ -51,20 +52,20 @@ void MST( const std::vector<Edge>& edges, std::vector<Edge>& treeEdges, size_t n
 				}
 			}
 		}
-		if( treeEdges.size() == nVertex - 1 ) { 
+		if( treeEdges.size() == nVertex - 1 ) {
 			return;
 		}
 	}
 }
 
-std::vector<size_t> MakeHamiltonianPath(const std::vector<Edge>& mstEdges, const std::vector<Point>& points, 
-	size_t startVertex = 0)
+std::vector<size_t> MakeHamiltonianPath( const std::vector<Edge>& mstEdges, const std::vector<Point>& points,
+	size_t startVertex = 0 )
 {
 	std::vector<size_t> hamCycle;
 	hamCycle.reserve( points.size() + 1 );
 	size_t n = mstEdges.size() + 1;
 	std::vector<bool> visited( n, false );
-	
+
 	hamCycle.push_back( startVertex );
 	for( size_t i = 0; i < n; ++i ) {
 		size_t last_vertex = hamCycle.back();
@@ -108,14 +109,13 @@ void MakeRandomShuffles( const std::vector<Point>& points, std::vector<size_t>& 
 	for( int i = 0; i < maxIter; ++i ) {
 		size_t left = std::rand() % n;
 		if( left == 0 ) ++left;
-		size_t right = std::rand() % n;
-		if( left > right ) std::swap( left, right );
+		size_t right = left + std::rand() % ( n - left );
 		if( left == right ) continue;
 		double diff = 0;
-		diff += Point::Distance( points[left - 1], points[left] );
-		diff += Point::Distance( points[right], points[( right + 1 ) % n] );
-		diff -= Point::Distance( points[left - 1], points[right] );
-		diff -= Point::Distance( points[( right + 1 ) % n], points[left] );
+		diff += Point::Distance( points[hamPath[left - 1]], points[hamPath[left]] );
+		diff += Point::Distance( points[hamPath[right]], points[hamPath[( right + 1 ) % n]] );
+		diff -= Point::Distance( points[hamPath[left - 1]], points[hamPath[right]] );
+		diff -= Point::Distance( points[hamPath[( right + 1 ) % n]], points[hamPath[left]] );
 		if( diff > 1e-6 ) {
 			std::reverse( hamPath.begin() + left, hamPath.begin() + right + 1 );
 		}
@@ -135,6 +135,7 @@ double CalculatePathWeight( const std::vector<Point>& points, const std::vector<
 
 void PrintAnswer( const std::vector<Point>& points, const std::vector<size_t>& path )
 {
+	std::cout << std::setprecision( 9 );
 	std::cout << CalculatePathWeight( points, path ) << std::endl;
 	for( size_t vert : path ) {
 		std::cout << vert + 1 << " ";
@@ -142,7 +143,7 @@ void PrintAnswer( const std::vector<Point>& points, const std::vector<size_t>& p
 	std::cout << std::endl;
 }
 
-int main(int argc, char* argv[])
+int main( int argc, char* argv[] )
 {
 	// Эта ересь, чтобы можно было в аргументах ком. строки передавать файл на вход и выход
 	std::ifstream input;
@@ -172,7 +173,7 @@ int main(int argc, char* argv[])
 			Edge edge;
 			edge.From = j;
 			edge.To = i;
-			edge.Weight = static_cast<float>( Point::Distance( points[j], p ) );
+			edge.Weight = static_cast<double>( Point::Distance( points[j], p ) );
 
 			if( n > MEMORY_LIMIT ) {
 				if( j % EDGES_RATIO == 0 ) {
@@ -183,7 +184,7 @@ int main(int argc, char* argv[])
 			}
 
 		}
-		
+
 		points.push_back( p );
 	}
 	//assert( false );
