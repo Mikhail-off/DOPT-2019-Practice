@@ -42,6 +42,7 @@ def main():
     
     for proc in procs:
         proc.join()
+        proc.terminate()
 
     procs = []
     for test in tests:
@@ -56,6 +57,7 @@ def main():
     
     for proc in procs:
         proc.join()
+        proc.terminate()
     
 
 if __name__ == '__main__':
