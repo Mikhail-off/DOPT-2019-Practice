@@ -17,10 +17,7 @@ struct Point {
 	double x;
 	double y;
 
-	static double Distance( const Point& p1, const Point& p2 )
-	{
-		return std::sqrt( ( p1.x - p2.x ) * ( p1.x - p2.x ) + ( p1.y - p2.y ) * ( p1.y - p2.y ) );
-	}
+	static double Distance( const Point& p1, const Point& p2 );
 };
 
 struct Edge {
@@ -29,10 +26,51 @@ struct Edge {
 	vertex_t To;
 };
 
+class CGeneticAlgo {
+public:
+	CGeneticAlgo( const std::vector<Point>& _points,
+		double _selectionRatio, double _mutationRatio );
+	void RunEvolution( std::vector<vertex_t>& hamPath );
+
+	static double CalculatePathWeight( const std::vector<Point>& points, const std::vector<vertex_t>& path );
+	
+private:
+	double selectionRatio;
+	double mutationRatio;
+
+	const std::vector<Point>& points;
+	std::vector<std::vector<vertex_t>> population;
+
+	void selection();
+	void mutation();
+	void reproduction();
+	void selectBestSolution();
+	
+	bool canBeSolution( const std::vector<vertex_t>& path );
+
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+////////////// Point
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+double Point::Distance( const Point& p1, const Point& p2 )
+{
+	return std::sqrt( ( p1.x - p2.x ) * ( p1.x - p2.x ) + ( p1.y - p2.y ) * ( p1.y - p2.y ) );
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+////////////// Edge
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
 bool operator < ( const Edge& e1, const Edge& e2 )
 {
 	return e1.Weight < e2.Weight;
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+////////////// Functions
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
 void MST( const std::vector<Edge>& edges, std::vector<Edge>& treeEdges, size_t nVertex )
 {
@@ -58,17 +96,17 @@ void MST( const std::vector<Edge>& edges, std::vector<Edge>& treeEdges, size_t n
 	}
 }
 
-std::vector<size_t> MakeHamiltonianPath( const std::vector<Edge>& mstEdges, const std::vector<Point>& points,
+std::vector<vertex_t> MakeHamiltonianPath( const std::vector<Edge>& mstEdges, const std::vector<Point>& points,
 	size_t startVertex = 0 )
 {
-	std::vector<size_t> hamCycle;
+	std::vector<vertex_t> hamCycle;
 	hamCycle.reserve( points.size() + 1 );
 	size_t n = mstEdges.size() + 1;
 	std::vector<bool> visited( n, false );
 
 	hamCycle.push_back( startVertex );
 	for( size_t i = 0; i < n; ++i ) {
-		size_t last_vertex = hamCycle.back();
+		vertex_t last_vertex = hamCycle.back();
 		visited[last_vertex] = true;
 		bool foundNext = false;
 		for( auto edge : mstEdges ) {
@@ -81,9 +119,9 @@ std::vector<size_t> MakeHamiltonianPath( const std::vector<Edge>& mstEdges, cons
 			}
 		}
 		if( !foundNext ) {
-			size_t nextVert = 0;
+			vertex_t nextVert = 0;
 			double nextWeight = -1;
-			for( size_t k = 0; k < points.size(); ++k ) {
+			for( vertex_t k = 0; k < points.size(); ++k ) {
 				if( visited[k] ) continue;
 				auto point = points[k];
 				double curWeight = Point::Distance( point, points[last_vertex] );
@@ -101,28 +139,54 @@ std::vector<size_t> MakeHamiltonianPath( const std::vector<Edge>& mstEdges, cons
 	return hamCycle;
 }
 
-
-void MakeRandomShuffles( const std::vector<Point>& points, std::vector<size_t>& hamPath, int maxIter = MAX_ITER )
+void MakeRandomReverse( const std::vector<Point>& points, std::vector<vertex_t>& hamPath )
 {
-	assert( maxIter > 0 );
 	size_t n = hamPath.size();
-	for( int i = 0; i < maxIter; ++i ) {
-		size_t left = std::rand() % n;
-		if( left == 0 ) ++left;
-		size_t right = left + std::rand() % ( n - left );
-		if( left == right ) continue;
-		double diff = 0;
-		diff += Point::Distance( points[hamPath[left - 1]], points[hamPath[left]] );
-		diff += Point::Distance( points[hamPath[right]], points[hamPath[( right + 1 ) % n]] );
-		diff -= Point::Distance( points[hamPath[left - 1]], points[hamPath[right]] );
-		diff -= Point::Distance( points[hamPath[( right + 1 ) % n]], points[hamPath[left]] );
-		if( diff > 1e-6 ) {
-			std::reverse( hamPath.begin() + left, hamPath.begin() + right + 1 );
-		}
+	size_t left = std::rand() % n;
+	if( left == 0 ) ++left;
+	size_t right = left + std::rand() % ( n - left );
+	if( left == right ) return;
+	double diff = 0;
+	diff += Point::Distance( points[hamPath[left - 1]], points[hamPath[left]] );
+	diff += Point::Distance( points[hamPath[right]], points[hamPath[( right + 1 ) % n]] );
+	diff -= Point::Distance( points[hamPath[left - 1]], points[hamPath[right]] );
+	diff -= Point::Distance( points[hamPath[( right + 1 ) % n]], points[hamPath[left]] );
+	if( diff > 1e-6 ) {
+		std::reverse( hamPath.begin() + left, hamPath.begin() + right + 1 );
 	}
 }
 
-double CalculatePathWeight( const std::vector<Point>& points, const std::vector<size_t>& path )
+void MakeRandomReverses( const std::vector<Point>& points, std::vector<vertex_t>& hamPath, int maxIter = MAX_ITER )
+{
+	assert( maxIter > 0 );
+	for( int i = 0; i < maxIter; ++i ) {
+		MakeRandomReverse( points, hamPath );
+	}
+}
+
+void PrintAnswer( const std::vector<Point>& points, const std::vector<vertex_t>& path )
+{
+	std::cout << std::setprecision( 9 );
+	std::cout << CGeneticAlgo::CalculatePathWeight( points, path ) << std::endl;
+	for( auto vert : path ) {
+		std::cout << vert + 1 << " ";
+	}
+	std::cout << std::endl;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+////////////// CGeneticAlgo
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+CGeneticAlgo::CGeneticAlgo( const std::vector<Point>& _points,
+	double _selectionRatio, double _mutationRatio ) :
+	points( _points ),
+	selectionRatio( _selectionRatio ),
+	mutationRatio( _mutationRatio )
+{
+}
+
+double CGeneticAlgo::CalculatePathWeight( const std::vector<Point>& points, const std::vector<vertex_t>& path )
 {
 	if( path.size() <= 1 ) return 0;
 	double weight = 0;
@@ -133,15 +197,19 @@ double CalculatePathWeight( const std::vector<Point>& points, const std::vector<
 	return weight;
 }
 
-void PrintAnswer( const std::vector<Point>& points, const std::vector<size_t>& path )
+bool CGeneticAlgo::canBeSolution( const std::vector<vertex_t>& path )
 {
-	std::cout << std::setprecision( 9 );
-	std::cout << CalculatePathWeight( points, path ) << std::endl;
-	for( size_t vert : path ) {
-		std::cout << vert + 1 << " ";
-	}
-	std::cout << std::endl;
+	return std::set<vertex_t>( path.begin(), path.end() ).size() == points.size();
 }
+
+void CGeneticAlgo::selection()
+{
+
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+////////////// Main
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
 int main( int argc, char* argv[] )
 {
@@ -193,11 +261,14 @@ int main( int argc, char* argv[] )
 	MST( edges, mstEdges, n );
 	assert( mstEdges.size() == n - 1 );
 
-	std::vector<size_t> hamPath = MakeHamiltonianPath( mstEdges, points, 0 );
-	assert( std::set<size_t>( hamPath.begin(), hamPath.end() ).size() == n );
+	std::vector<vertex_t> hamPath = MakeHamiltonianPath( mstEdges, points, 0 );
+	assert( std::set<vertex_t>( hamPath.begin(), hamPath.end() ).size() == n );
+
+	// ХАК, ХИНТ!!! Чтобы осводобить реально память из вектора
+	std::vector<Edge>().swap( edges );
 
 	//PrintAnswer(points, hamPath );
-	MakeRandomShuffles( points, hamPath );
+	MakeRandomReverses( points, hamPath );
 	assert( std::set<size_t>( hamPath.begin(), hamPath.end() ).size() == n );
 
 	//hamPath.push_back( hamPath.front() );
