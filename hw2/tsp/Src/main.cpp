@@ -6,6 +6,7 @@
 #include <set>
 #include <fstream>
 #include <iomanip> 
+#include <random>
 
 const size_t MAX_ITER = 70000000;
 const size_t MEMORY_LIMIT = 7000;
@@ -29,6 +30,7 @@ struct Edge {
 class CGeneticAlgo {
 public:
 	CGeneticAlgo( const std::vector<Point>& _points,
+		const std::vector<std::vector<vertex_t>>& initialPopulation,
 		double _selectionRatio, double _mutationRatio );
 	void RunEvolution( std::vector<vertex_t>& hamPath );
 
@@ -41,11 +43,14 @@ private:
 	const std::vector<Point>& points;
 	std::vector<std::vector<vertex_t>> population;
 
-	void selection();
-	void mutation();
-	void reproduction();
+	std::mt19937 gen;
+	std::uniform_real_distribution<double> randomGenerator;
+
 	void selectBestSolution();
-	
+	void combineTwoPaths( const std::vector<vertex_t>& path1, const std::vector<vertex_t>& path2,
+		std::vector<vertex_t>& hybrid );
+	void mutatePath( std::vector<vertex_t>& path );
+	bool pathComporator( const std::vector<vertex_t>& path1, const std::vector<vertex_t> path2 );
 	bool canBeSolution( const std::vector<vertex_t>& path );
 
 };
@@ -179,11 +184,28 @@ void PrintAnswer( const std::vector<Point>& points, const std::vector<vertex_t>&
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 CGeneticAlgo::CGeneticAlgo( const std::vector<Point>& _points,
+	const std::vector<std::vector<vertex_t>>& initialPopulation,
 	double _selectionRatio, double _mutationRatio ) :
 	points( _points ),
+	population( initialPopulation.begin(), initialPopulation.end() ),
 	selectionRatio( _selectionRatio ),
-	mutationRatio( _mutationRatio )
+	mutationRatio( _mutationRatio ),
+	randomGenerator( 0, 1 )
 {
+	std::random_device rd;
+	gen = std::mt19937( rd() );
+	/*
+	for( size_t i = 0; i < initialPopulation.size(); ++i ) {
+		size_t firstVertInd = 0;
+		for( size_t j = 0; j < population[i].size(); ++i ) {
+			if( population[i][j] == 0 ) {
+				firstVertInd = j;
+				break;
+			}
+		}
+		std::rotate( population[i].begin(), population[i].end(), population[i].begin() + firstVertInd );
+	}
+	*/
 }
 
 double CGeneticAlgo::CalculatePathWeight( const std::vector<Point>& points, const std::vector<vertex_t>& path )
@@ -202,9 +224,61 @@ bool CGeneticAlgo::canBeSolution( const std::vector<vertex_t>& path )
 	return std::set<vertex_t>( path.begin(), path.end() ).size() == points.size();
 }
 
-void CGeneticAlgo::selection()
+bool CGeneticAlgo::pathComporator( const std::vector<vertex_t>& path1,
+	const std::vector<vertex_t> path2 )
 {
+	double weight1 = CGeneticAlgo::CalculatePathWeight( points, path1 );
+	double weight2 = CGeneticAlgo::CalculatePathWeight( points, path2 );
+	return weight1 < weight2;
+}
 
+void CGeneticAlgo::RunEvolution( std::vector<vertex_t>& hamPath )
+{
+	std::sort( population.begin(), population.end(), pathComporator );
+	size_t first = 0;
+	size_t last = static_cast<size_t>( population.size() * selectionRatio );
+	assert( first < last );
+	assert( last < population.size() );
+	for( size_t i = last; i < population.size(); ++i ) {
+		size_t parent1 = std::rand() % last;
+		size_t parent2 = parent1;
+		while( parent1 == parent2 ) parent2 = std::rand() % last;
+		combineTwoPaths( population[parent1], population[parent2], population[i] );
+		mutatePath( population[i] );
+	}
+}
+
+void CGeneticAlgo::combineTwoPaths( const std::vector<vertex_t>& path1, const std::vector<vertex_t>& path2,
+	std::vector<vertex_t>& hybrid )
+{
+	size_t n = path1.size();
+	assert( n == path2.size() );
+	std::vector<bool> marked( n, false );
+	size_t left = std::rand() % n;
+	size_t right = left + std::rand() % ( n - left );
+	size_t hybridIter = 0;
+	for( size_t i = left; i < right; ++i ) {
+		hybrid[hybridIter] = path1[i];
+		marked[path1[i]] = true;
+		hybridIter++;
+	}
+	for( size_t i = 0; i < n; ++i ) {
+		if( !marked[path2[i]] ) {
+			hybrid[hybridIter] = path2[i];
+			hybridIter++;
+		}
+	}
+	assert( hybridIter == n );
+}
+
+
+void CGeneticAlgo::mutatePath( std::vector<vertex_t>& path )
+{
+	if( randomGenerator( gen ) < mutationRatio ) {
+		size_t left = std::rand() % path.size();
+		size_t right = std::rand() % path.size();
+		std::swap( path[left], path[right] );
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
