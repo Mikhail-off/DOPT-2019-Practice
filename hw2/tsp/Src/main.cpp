@@ -7,10 +7,21 @@
 #include <fstream>
 #include <iomanip> 
 #include <random>
+#include <functional>
 
-const size_t MAX_ITER = 70000000;
+//const size_t MAX_ITER = 70000000;
+const size_t MAX_ITER = 10000;
+
 const size_t MEMORY_LIMIT = 7000;
-const size_t EDGES_RATIO = 100;
+const size_t EDGES_RATIO = 1000;
+
+const size_t POPULATION_SIZE = 100;
+const size_t GENETIC_ITER = 20;
+const double POPULATION_RATIO = 0.2;
+const double MUTATION_RATIO = 0.05;
+
+bool isLog = false;
+bool isDebug = isLog;
 
 typedef unsigned short int vertex_t;
 
@@ -30,29 +41,25 @@ struct Edge {
 class CGeneticAlgo {
 public:
 	CGeneticAlgo( const std::vector<Point>& _points,
-		const std::vector<std::vector<vertex_t>>& initialPopulation,
+		std::vector<std::vector<vertex_t>>& initialPopulation,
 		double _selectionRatio, double _mutationRatio );
-	void RunEvolution( std::vector<vertex_t>& hamPath );
+	void RunEvolutionOnce();
+	size_t GetBestInd();
 
 	static double CalculatePathWeight( const std::vector<Point>& points, const std::vector<vertex_t>& path );
-	
+
 private:
 	double selectionRatio;
 	double mutationRatio;
 
 	const std::vector<Point>& points;
-	std::vector<std::vector<vertex_t>> population;
+	std::vector<std::vector<vertex_t>>& population;
 
-	std::mt19937 gen;
-	std::uniform_real_distribution<double> randomGenerator;
-
-	void selectBestSolution();
 	void combineTwoPaths( const std::vector<vertex_t>& path1, const std::vector<vertex_t>& path2,
-		std::vector<vertex_t>& hybrid );
-	void mutatePath( std::vector<vertex_t>& path );
-	bool pathComporator( const std::vector<vertex_t>& path1, const std::vector<vertex_t> path2 );
-	bool canBeSolution( const std::vector<vertex_t>& path );
-
+		std::vector<vertex_t>& hybrid ) const;
+	void mutatePath( std::vector<vertex_t>& path ) const;
+	bool pathComporator( const std::vector<vertex_t>& path1, const std::vector<vertex_t>& path2 ) const;
+	bool canBeSolution( const std::vector<vertex_t>& path ) const;
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -68,7 +75,7 @@ double Point::Distance( const Point& p1, const Point& p2 )
 ////////////// Edge
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool operator < ( const Edge& e1, const Edge& e2 )
+bool operator < ( const Edge & e1, const Edge & e2 )
 {
 	return e1.Weight < e2.Weight;
 }
@@ -77,7 +84,7 @@ bool operator < ( const Edge& e1, const Edge& e2 )
 ////////////// Functions
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-void MST( const std::vector<Edge>& edges, std::vector<Edge>& treeEdges, size_t nVertex )
+void MST( const std::vector<Edge> & edges, std::vector<Edge> & treeEdges, size_t nVertex )
 {
 	std::vector<size_t> vertexId( nVertex );
 	for( size_t i = 0; i < nVertex; ++i ) {
@@ -101,8 +108,8 @@ void MST( const std::vector<Edge>& edges, std::vector<Edge>& treeEdges, size_t n
 	}
 }
 
-std::vector<vertex_t> MakeHamiltonianPath( const std::vector<Edge>& mstEdges, const std::vector<Point>& points,
-	size_t startVertex = 0 )
+std::vector<vertex_t> MakeHamiltonianPath( const std::vector<Edge> & mstEdges, const std::vector<Point> & points,
+	vertex_t startVertex = 0 )
 {
 	std::vector<vertex_t> hamCycle;
 	hamCycle.reserve( points.size() + 1 );
@@ -144,7 +151,7 @@ std::vector<vertex_t> MakeHamiltonianPath( const std::vector<Edge>& mstEdges, co
 	return hamCycle;
 }
 
-void MakeRandomReverse( const std::vector<Point>& points, std::vector<vertex_t>& hamPath )
+void MakeRandomReverse( const std::vector<Point> & points, std::vector<vertex_t> & hamPath )
 {
 	size_t n = hamPath.size();
 	size_t left = std::rand() % n;
@@ -161,7 +168,7 @@ void MakeRandomReverse( const std::vector<Point>& points, std::vector<vertex_t>&
 	}
 }
 
-void MakeRandomReverses( const std::vector<Point>& points, std::vector<vertex_t>& hamPath, int maxIter = MAX_ITER )
+void MakeRandomReverses( const std::vector<Point> & points, std::vector<vertex_t> & hamPath, int maxIter = MAX_ITER )
 {
 	assert( maxIter > 0 );
 	for( int i = 0; i < maxIter; ++i ) {
@@ -169,7 +176,7 @@ void MakeRandomReverses( const std::vector<Point>& points, std::vector<vertex_t>
 	}
 }
 
-void PrintAnswer( const std::vector<Point>& points, const std::vector<vertex_t>& path )
+void PrintAnswer( const std::vector<Point> & points, const std::vector<vertex_t> & path )
 {
 	std::cout << std::setprecision( 9 );
 	std::cout << CGeneticAlgo::CalculatePathWeight( points, path ) << std::endl;
@@ -179,36 +186,29 @@ void PrintAnswer( const std::vector<Point>& points, const std::vector<vertex_t>&
 	std::cout << std::endl;
 }
 
+void GenerateInitialPopulation( std::vector<std::vector<vertex_t>> & population, const std::vector<vertex_t> & initialPath )
+{
+	for( size_t i = 0; i < population.size(); ++i ) {
+		std::copy( initialPath.begin(), initialPath.end(), population[i].begin() );
+		std::random_shuffle( population[i].begin(), population[i].end() );
+	}
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////// CGeneticAlgo
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-CGeneticAlgo::CGeneticAlgo( const std::vector<Point>& _points,
-	const std::vector<std::vector<vertex_t>>& initialPopulation,
+CGeneticAlgo::CGeneticAlgo( const std::vector<Point> & _points,
+	std::vector<std::vector<vertex_t>> & initialPopulation,
 	double _selectionRatio, double _mutationRatio ) :
 	points( _points ),
-	population( initialPopulation.begin(), initialPopulation.end() ),
+	population( initialPopulation ),
 	selectionRatio( _selectionRatio ),
-	mutationRatio( _mutationRatio ),
-	randomGenerator( 0, 1 )
+	mutationRatio( _mutationRatio )
 {
-	std::random_device rd;
-	gen = std::mt19937( rd() );
-	/*
-	for( size_t i = 0; i < initialPopulation.size(); ++i ) {
-		size_t firstVertInd = 0;
-		for( size_t j = 0; j < population[i].size(); ++i ) {
-			if( population[i][j] == 0 ) {
-				firstVertInd = j;
-				break;
-			}
-		}
-		std::rotate( population[i].begin(), population[i].end(), population[i].begin() + firstVertInd );
-	}
-	*/
 }
 
-double CGeneticAlgo::CalculatePathWeight( const std::vector<Point>& points, const std::vector<vertex_t>& path )
+double CGeneticAlgo::CalculatePathWeight( const std::vector<Point> & points, const std::vector<vertex_t> & path )
 {
 	if( path.size() <= 1 ) return 0;
 	double weight = 0;
@@ -219,40 +219,58 @@ double CGeneticAlgo::CalculatePathWeight( const std::vector<Point>& points, cons
 	return weight;
 }
 
-bool CGeneticAlgo::canBeSolution( const std::vector<vertex_t>& path )
+bool CGeneticAlgo::canBeSolution( const std::vector<vertex_t> & path ) const
 {
 	return std::set<vertex_t>( path.begin(), path.end() ).size() == points.size();
 }
 
-bool CGeneticAlgo::pathComporator( const std::vector<vertex_t>& path1,
-	const std::vector<vertex_t> path2 )
+bool CGeneticAlgo::pathComporator( const std::vector<vertex_t> & path1,
+	const std::vector<vertex_t> & path2 ) const
 {
-	double weight1 = CGeneticAlgo::CalculatePathWeight( points, path1 );
-	double weight2 = CGeneticAlgo::CalculatePathWeight( points, path2 );
+	double weight1 = CGeneticAlgo::CalculatePathWeight( this->points, path1 );
+	double weight2 = CGeneticAlgo::CalculatePathWeight( this->points, path2 );
 	return weight1 < weight2;
 }
 
-void CGeneticAlgo::RunEvolution( std::vector<vertex_t>& hamPath )
+void CGeneticAlgo::RunEvolutionOnce()
 {
-	std::sort( population.begin(), population.end(), pathComporator );
-	size_t first = 0;
+	std::sort( population.begin(), population.end(),
+		std::bind( &CGeneticAlgo::pathComporator, this, std::placeholders::_1, std::placeholders::_2 ) );
+	if( isDebug ) {
+		double prevWeight = 0;
+		for( std::vector<vertex_t>& path : population ) {
+			double weight = CGeneticAlgo::CalculatePathWeight( points, path );
+			assert( prevWeight < weight + 1e-3 );
+			prevWeight = weight;
+		}
+	}
 	size_t last = static_cast<size_t>( population.size() * selectionRatio );
-	assert( first < last );
 	assert( last < population.size() );
 	for( size_t i = last; i < population.size(); ++i ) {
 		size_t parent1 = std::rand() % last;
 		size_t parent2 = parent1;
 		while( parent1 == parent2 ) parent2 = std::rand() % last;
+		if( isLog ) {
+			std::cout << "parent1 ind " << parent1 << "\nparent2 ind " << parent2 << std::endl;
+			std::cout << "last strong ind " << last << std::endl;
+		}
 		combineTwoPaths( population[parent1], population[parent2], population[i] );
 		mutatePath( population[i] );
 	}
 }
 
-void CGeneticAlgo::combineTwoPaths( const std::vector<vertex_t>& path1, const std::vector<vertex_t>& path2,
-	std::vector<vertex_t>& hybrid )
+void CGeneticAlgo::combineTwoPaths( const std::vector<vertex_t> & path1, const std::vector<vertex_t> & path2,
+	std::vector<vertex_t> & hybrid ) const
 {
 	size_t n = path1.size();
 	assert( n == path2.size() );
+	if( isLog ) {
+		std::cout << "\n\n PARENT 1\n";
+		PrintAnswer( points, path1 );
+
+		std::cout << "\n\n PARENT 2\n";
+		PrintAnswer( points, path2 );
+	}
 	std::vector<bool> marked( n, false );
 	size_t left = std::rand() % n;
 	size_t right = left + std::rand() % ( n - left );
@@ -268,17 +286,39 @@ void CGeneticAlgo::combineTwoPaths( const std::vector<vertex_t>& path1, const st
 			hybridIter++;
 		}
 	}
+
+	if( isLog ) {
+		std::cout << "\n\n HYBRID\n";
+		PrintAnswer( points, hybrid );
+		std::cout << "left = " << left << " right = " << right;
+		std::cout << "\n\n";
+	}
 	assert( hybridIter == n );
 }
 
 
-void CGeneticAlgo::mutatePath( std::vector<vertex_t>& path )
+void CGeneticAlgo::mutatePath( std::vector<vertex_t> & path ) const
 {
-	if( randomGenerator( gen ) < mutationRatio ) {
+	if( static_cast<double>( std::rand() ) / RAND_MAX < mutationRatio ) {
 		size_t left = std::rand() % path.size();
 		size_t right = std::rand() % path.size();
 		std::swap( path[left], path[right] );
 	}
+}
+
+size_t CGeneticAlgo::GetBestInd()
+{
+	size_t bestInd = 0;
+	double bestWeight = -1.;
+	for( size_t i = 0; i < population.size(); ++i ) {
+		std::vector<vertex_t>& path = population[i];
+		double weight = CGeneticAlgo::CalculatePathWeight( points, path );
+		if( bestWeight < 0 || weight < bestWeight ) {
+			bestWeight = weight;
+			bestInd = i;
+		}
+	}
+	return bestInd;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -287,6 +327,7 @@ void CGeneticAlgo::mutatePath( std::vector<vertex_t>& path )
 
 int main( int argc, char* argv[] )
 {
+	std::srand( std::time( 0 ) );
 	// Эта ересь, чтобы можно было в аргументах ком. строки передавать файл на вход и выход
 	std::ifstream input;
 	std::ofstream output;
@@ -342,10 +383,37 @@ int main( int argc, char* argv[] )
 	std::vector<Edge>().swap( edges );
 
 	//PrintAnswer(points, hamPath );
-	MakeRandomReverses( points, hamPath );
+	std::vector<vertex_t> hamPathAfterRandom( hamPath.begin(), hamPath.end() );
+	MakeRandomReverses( points, hamPathAfterRandom );
 	assert( std::set<size_t>( hamPath.begin(), hamPath.end() ).size() == n );
 
+	std::vector<std::vector<vertex_t>> population( POPULATION_SIZE, std::vector<vertex_t>( n, 0 ) );
+	GenerateInitialPopulation( population, hamPath );
+	std::copy( hamPath.begin(), hamPath.end(), population[0].begin() );
+	std::copy( hamPathAfterRandom.begin(), hamPathAfterRandom.end(), population[1].begin() );
+
+	CGeneticAlgo genAlgo( points, population, POPULATION_RATIO, MUTATION_RATIO );
+	for( size_t i = 0; i < GENETIC_ITER; ++i ) {
+		genAlgo.RunEvolutionOnce();
+		if( isLog ) {
+			PrintAnswer( points, population[genAlgo.GetBestInd()] );
+			std::cout << "ITER " << i << ":\n";
+			for( std::vector<vertex_t>& path : population ) {
+				for( auto vert : path ) {
+					std::cout << vert << " ";
+				}
+				std::cout << ": " << CGeneticAlgo::CalculatePathWeight( points, path ) << std::endl;
+			}
+			std::cout << "-------------------------" << std::endl;
+		}
+	}
+
+	std::vector<vertex_t> geneticBest( n );
+	size_t bestInd = genAlgo.GetBestInd();
+	std::copy( population[bestInd].begin(), population[bestInd].end(), geneticBest.begin() );
+	std::vector<std::vector<vertex_t>>().swap( population );
+
 	//hamPath.push_back( hamPath.front() );
-	PrintAnswer( points, hamPath );
+	PrintAnswer( points, geneticBest );
 	return 0;
 }
