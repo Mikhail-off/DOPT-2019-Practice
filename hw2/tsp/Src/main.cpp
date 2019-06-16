@@ -9,16 +9,26 @@
 #include <random>
 #include <functional>
 
-//const size_t MAX_ITER = 70000000;
-const size_t MAX_ITER = 10000;
+const bool ENABLE_MST = true;
+const bool ENABLE_RANDOM_REVERSE = true;
+const bool ENABLE_RANDOM_SWAP = true;
+const bool ENABLE_GENETIC = true;
 
-const size_t MEMORY_LIMIT = 7000;
-const size_t EDGES_RATIO = 1000;
+const size_t MAX_ITER_REVERSE = 80000000;
+const size_t MAX_ITER_SWAP = 5000000;
 
-const size_t POPULATION_SIZE = 100;
-const size_t GENETIC_ITER = 20;
-const double POPULATION_RATIO = 0.2;
+const size_t MEMORY_LIMIT = 3000;
+const size_t EDGES_RATIO = 2000;
+
+
+const size_t SMALL_DIM = 1000;
+const size_t POPULATION_SIZE_LARGE = 20;
+const size_t POPULATION_SIZE_SMALL = 100;
+const size_t GENETIC_ITER_LARGE = 100;
+const size_t GENETIC_ITER_SMALL = 500;
+const double POPULATION_RATIO = 0.5;
 const double MUTATION_RATIO = 0.05;
+const double INIT_NEW = 0.9;
 
 bool isLog = false;
 bool isDebug = isLog;
@@ -46,6 +56,8 @@ public:
 	void RunEvolutionOnce();
 	size_t GetBestInd();
 
+	static bool PathComporator( const std::vector<Point>& points,
+		const std::vector<vertex_t>& path1, const std::vector<vertex_t>& path2 );
 	static double CalculatePathWeight( const std::vector<Point>& points, const std::vector<vertex_t>& path );
 
 private:
@@ -58,7 +70,6 @@ private:
 	void combineTwoPaths( const std::vector<vertex_t>& path1, const std::vector<vertex_t>& path2,
 		std::vector<vertex_t>& hybrid ) const;
 	void mutatePath( std::vector<vertex_t>& path ) const;
-	bool pathComporator( const std::vector<vertex_t>& path1, const std::vector<vertex_t>& path2 ) const;
 	bool canBeSolution( const std::vector<vertex_t>& path ) const;
 };
 
@@ -151,31 +162,6 @@ std::vector<vertex_t> MakeHamiltonianPath( const std::vector<Edge> & mstEdges, c
 	return hamCycle;
 }
 
-void MakeRandomReverse( const std::vector<Point> & points, std::vector<vertex_t> & hamPath )
-{
-	size_t n = hamPath.size();
-	size_t left = std::rand() % n;
-	if( left == 0 ) ++left;
-	size_t right = left + std::rand() % ( n - left );
-	if( left == right ) return;
-	double diff = 0;
-	diff += Point::Distance( points[hamPath[left - 1]], points[hamPath[left]] );
-	diff += Point::Distance( points[hamPath[right]], points[hamPath[( right + 1 ) % n]] );
-	diff -= Point::Distance( points[hamPath[left - 1]], points[hamPath[right]] );
-	diff -= Point::Distance( points[hamPath[( right + 1 ) % n]], points[hamPath[left]] );
-	if( diff > 1e-6 ) {
-		std::reverse( hamPath.begin() + left, hamPath.begin() + right + 1 );
-	}
-}
-
-void MakeRandomReverses( const std::vector<Point> & points, std::vector<vertex_t> & hamPath, int maxIter = MAX_ITER )
-{
-	assert( maxIter > 0 );
-	for( int i = 0; i < maxIter; ++i ) {
-		MakeRandomReverse( points, hamPath );
-	}
-}
-
 void PrintAnswer( const std::vector<Point> & points, const std::vector<vertex_t> & path )
 {
 	std::cout << std::setprecision( 9 );
@@ -186,11 +172,86 @@ void PrintAnswer( const std::vector<Point> & points, const std::vector<vertex_t>
 	std::cout << std::endl;
 }
 
-void GenerateInitialPopulation( std::vector<std::vector<vertex_t>> & population, const std::vector<vertex_t> & initialPath )
+bool MakeRandomReverse( const std::vector<Point> & points, std::vector<vertex_t> & hamPath )
 {
-	for( size_t i = 0; i < population.size(); ++i ) {
+	size_t n = hamPath.size();
+	size_t left = std::rand() % n;
+	if( left == 0 ) ++left;
+	size_t right = left + std::rand() % ( n - left );
+	if( left == right ) return false;
+	double diff = 0;
+	diff += Point::Distance( points[hamPath[left - 1]], points[hamPath[left]] );
+	diff += Point::Distance( points[hamPath[right]], points[hamPath[( right + 1 ) % n]] );
+	diff -= Point::Distance( points[hamPath[left - 1]], points[hamPath[right]] );
+	diff -= Point::Distance( points[hamPath[( right + 1 ) % n]], points[hamPath[left]] );
+	if( diff > 1e-6 ) {
+		std::reverse( hamPath.begin() + left, hamPath.begin() + right + 1 );
+		return true;
+	}
+	return false;
+}
+
+void MakeRandomReverses( const std::vector<Point> & points, std::vector<vertex_t> & hamPath,
+	std::vector<std::vector<vertex_t>> & lastPaths, size_t & lastSuccess,
+	int maxIter = MAX_ITER_REVERSE )
+{
+	assert( maxIter > 0 );
+	lastSuccess = 0;
+	bool allInit = false;
+	for( int i = 0; i < maxIter; ++i ) {
+		bool isBetter = MakeRandomReverse( points, hamPath );
+		if( isBetter ) {
+			std::copy( hamPath.begin(), hamPath.end(), lastPaths[lastSuccess % lastPaths.size()].begin() );
+			lastSuccess++;
+			if( lastSuccess >= lastPaths.size() ) {
+				allInit = true;
+			}
+		}
+	}
+	if( allInit ) lastSuccess = lastPaths.size();
+}
+
+void GenerateInitialPopulation( const std::vector<Point>& points,
+	std::vector<std::vector<vertex_t>> & population, const std::vector<vertex_t> & initialPath,
+	size_t initBegin = 0 )
+{
+	std::sort( population.begin(), population.begin() + initBegin,
+		std::bind( &CGeneticAlgo::PathComporator, points, std::placeholders::_1, std::placeholders::_2 ) );
+	for( size_t i = initBegin; i < population.size(); ++i ) {
 		std::copy( initialPath.begin(), initialPath.end(), population[i].begin() );
 		std::random_shuffle( population[i].begin(), population[i].end() );
+	}
+}
+
+void MakeRandomSwap( const std::vector<Point>& points, std::vector<vertex_t>& hamPath )
+{
+	size_t n = hamPath.size();
+	size_t left = std::rand() % n;
+	if( left == 0 ) ++left;
+	size_t right = left + std::rand() % ( n - left );
+	if( left == right ) return;
+	double diff = 0;
+	diff += Point::Distance( points[hamPath[left - 1]], points[hamPath[left]] );
+	diff += Point::Distance( points[hamPath[left + 1]], points[hamPath[left]] );
+	diff += Point::Distance( points[hamPath[right]], points[hamPath[( right + 1 ) % n]] );
+	diff += Point::Distance( points[hamPath[right]], points[hamPath[right - 1]] );
+
+	diff -= Point::Distance( points[hamPath[left - 1]], points[hamPath[right]] );
+	diff -= Point::Distance( points[hamPath[left + 1]], points[hamPath[right]] );
+	diff -= Point::Distance( points[hamPath[( right + 1 ) % n]], points[hamPath[left]] );
+	diff -= Point::Distance( points[hamPath[right - 1]], points[hamPath[left]] );
+
+	if( diff > 1e-6 ) {
+		std::swap( hamPath[left], hamPath[right] );
+	}
+}
+
+void MakeRandomSwaps( const std::vector<Point>& points, std::vector<vertex_t>& hamPath,
+	int maxIter = MAX_ITER_SWAP )
+{
+	assert( maxIter > 0 );
+	for( int i = 0; i < maxIter; ++i ) {
+		MakeRandomSwap( points, hamPath );
 	}
 }
 
@@ -224,18 +285,19 @@ bool CGeneticAlgo::canBeSolution( const std::vector<vertex_t> & path ) const
 	return std::set<vertex_t>( path.begin(), path.end() ).size() == points.size();
 }
 
-bool CGeneticAlgo::pathComporator( const std::vector<vertex_t> & path1,
-	const std::vector<vertex_t> & path2 ) const
+bool CGeneticAlgo::PathComporator( const std::vector<Point>& points, 
+	const std::vector<vertex_t> & path1,
+	const std::vector<vertex_t> & path2 )
 {
-	double weight1 = CGeneticAlgo::CalculatePathWeight( this->points, path1 );
-	double weight2 = CGeneticAlgo::CalculatePathWeight( this->points, path2 );
+	double weight1 = CGeneticAlgo::CalculatePathWeight( points, path1 );
+	double weight2 = CGeneticAlgo::CalculatePathWeight( points, path2 );
 	return weight1 < weight2;
 }
 
 void CGeneticAlgo::RunEvolutionOnce()
 {
 	std::sort( population.begin(), population.end(),
-		std::bind( &CGeneticAlgo::pathComporator, this, std::placeholders::_1, std::placeholders::_2 ) );
+		std::bind( &CGeneticAlgo::PathComporator, points, std::placeholders::_1, std::placeholders::_2 ) );
 	if( isDebug ) {
 		double prevWeight = 0;
 		for( std::vector<vertex_t>& path : population ) {
@@ -346,11 +408,15 @@ int main( int argc, char* argv[] )
 	std::vector<Edge> edges;
 	std::vector<Point> points;
 	points.reserve( n );
-	edges.reserve( n * n / 2 / EDGES_RATIO );
 
 	for( vertex_t i = 0; i < n; ++i ) {
 		Point p;
 		std::cin >> p.x >> p.y;
+
+		if( !ENABLE_MST ) {
+			points.push_back( p );
+			continue;
+		}
 
 		for( vertex_t j = 0; j < points.size(); ++j ) {
 			Edge edge;
@@ -371,49 +437,65 @@ int main( int argc, char* argv[] )
 		points.push_back( p );
 	}
 	//assert( false );
-	std::sort( edges.begin(), edges.end() );
-	std::vector<Edge> mstEdges;
-	MST( edges, mstEdges, n );
-	assert( mstEdges.size() == n - 1 );
+	std::vector<vertex_t> hamPath( n );
+	for( size_t i = 0; i < n; ++i ) {
+		hamPath[i] = i;
+	}
 
-	std::vector<vertex_t> hamPath = MakeHamiltonianPath( mstEdges, points, 0 );
-	assert( std::set<vertex_t>( hamPath.begin(), hamPath.end() ).size() == n );
-
+	if( ENABLE_MST ) {
+		std::sort( edges.begin(), edges.end() );
+		std::vector<Edge> mstEdges;
+		MST( edges, mstEdges, n );
+		assert( mstEdges.size() == n - 1 );
+		hamPath = MakeHamiltonianPath( mstEdges, points, 0 );
+		assert( std::set<vertex_t>( hamPath.begin(), hamPath.end() ).size() == n );
+	}
 	// ХАК, ХИНТ!!! Чтобы осводобить реально память из вектора
 	std::vector<Edge>().swap( edges );
 
-	//PrintAnswer(points, hamPath );
 	std::vector<vertex_t> hamPathAfterRandom( hamPath.begin(), hamPath.end() );
-	MakeRandomReverses( points, hamPathAfterRandom );
-	assert( std::set<size_t>( hamPath.begin(), hamPath.end() ).size() == n );
-
-	std::vector<std::vector<vertex_t>> population( POPULATION_SIZE, std::vector<vertex_t>( n, 0 ) );
-	GenerateInitialPopulation( population, hamPath );
-	std::copy( hamPath.begin(), hamPath.end(), population[0].begin() );
-	std::copy( hamPathAfterRandom.begin(), hamPathAfterRandom.end(), population[1].begin() );
-
-	CGeneticAlgo genAlgo( points, population, POPULATION_RATIO, MUTATION_RATIO );
-	for( size_t i = 0; i < GENETIC_ITER; ++i ) {
-		genAlgo.RunEvolutionOnce();
-		if( isLog ) {
-			PrintAnswer( points, population[genAlgo.GetBestInd()] );
-			std::cout << "ITER " << i << ":\n";
-			for( std::vector<vertex_t>& path : population ) {
-				for( auto vert : path ) {
-					std::cout << vert << " ";
-				}
-				std::cout << ": " << CGeneticAlgo::CalculatePathWeight( points, path ) << std::endl;
-			}
-			std::cout << "-------------------------" << std::endl;
-		}
+	size_t populationSize = n < SMALL_DIM ? POPULATION_SIZE_SMALL : POPULATION_SIZE_LARGE;
+	std::vector<std::vector<vertex_t>> population( populationSize, std::vector<vertex_t>( n, 0 ) );
+	size_t initFirst = 0;
+	if( ENABLE_RANDOM_REVERSE ) {
+		MakeRandomReverses( points, hamPathAfterRandom, population, initFirst );
 	}
+	if( ENABLE_RANDOM_SWAP ) {
+		MakeRandomSwaps( points, hamPathAfterRandom );
+	}
+	assert( std::set<size_t>( hamPathAfterRandom.begin(), hamPathAfterRandom.end() ).size() == n );
 
-	std::vector<vertex_t> geneticBest( n );
-	size_t bestInd = genAlgo.GetBestInd();
-	std::copy( population[bestInd].begin(), population[bestInd].end(), geneticBest.begin() );
-	std::vector<std::vector<vertex_t>>().swap( population );
+	std::vector<vertex_t> geneticBest( hamPathAfterRandom.begin(), hamPathAfterRandom.end() );
+	if( true || ENABLE_GENETIC && n < MEMORY_LIMIT ) {
+		std::copy( hamPathAfterRandom.begin(), hamPathAfterRandom.end(), population[0].begin() );
+		GenerateInitialPopulation( points, population, hamPathAfterRandom, static_cast<size_t> ( initFirst * INIT_NEW ) );
+		CGeneticAlgo genAlgo( points, population, POPULATION_RATIO, MUTATION_RATIO );
+		size_t maxIter = n < SMALL_DIM ? GENETIC_ITER_SMALL : GENETIC_ITER_LARGE;
+		for( size_t i = 0; i < maxIter; ++i ) {
+			genAlgo.RunEvolutionOnce();
+			if( isLog ) {
+				PrintAnswer( points, population[genAlgo.GetBestInd()] );
+				std::cout << "ITER " << i << ":\n";
+				for( std::vector<vertex_t>& path : population ) {
+					for( auto vert : path ) {
+						std::cout << vert << " ";
+					}
+					std::cout << ": " << CGeneticAlgo::CalculatePathWeight( points, path ) << std::endl;
+				}
+				std::cout << "-------------------------" << std::endl;
+			}
+		}
 
+
+		size_t bestInd = genAlgo.GetBestInd();
+		std::copy( population[bestInd].begin(), population[bestInd].end(), geneticBest.begin() );
+		std::vector<std::vector<vertex_t>>().swap( population );
+	}
 	//hamPath.push_back( hamPath.front() );
 	PrintAnswer( points, geneticBest );
+	if( isLog ) {
+		std::cout << "RANDOM ALGO:" << std::endl;
+		PrintAnswer( points, hamPathAfterRandom );
+	}
 	return 0;
 }

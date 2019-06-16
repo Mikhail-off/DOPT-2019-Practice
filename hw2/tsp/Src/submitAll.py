@@ -12,7 +12,7 @@ submitPath = os.path.join(solutionDir, hwName, taskName, 'Task', 'submit.py')
 
 testsDir = os.path.join(solutionDir, hwName, taskName, 'Task', 'tests')
 
-myName = 'mikhailov_nikita_m_test_gen'
+myName = 'mikhailov_nikita_m'
 
 def runOnTest(name):
     testName = name + '.public'
