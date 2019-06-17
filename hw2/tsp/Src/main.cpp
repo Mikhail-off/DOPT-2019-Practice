@@ -8,6 +8,7 @@
 #include <iomanip> 
 #include <random>
 #include <functional>
+#include <cmath>
 
 const bool ENABLE_MST = true;
 const bool ENABLE_RANDOM_REVERSE = true;
@@ -15,20 +16,21 @@ const bool ENABLE_RANDOM_SWAP = true;
 const bool ENABLE_GENETIC = true;
 
 const size_t MAX_ITER_REVERSE = 80000000;
-const size_t MAX_ITER_SWAP = 5000000;
+const size_t MAX_ITER_SWAP = 10000000;
 
 const size_t MEMORY_LIMIT = 3000;
 const size_t EDGES_RATIO = 2000;
 
 
 const size_t SMALL_DIM = 1000;
-const size_t POPULATION_SIZE_LARGE = 20;
+const size_t POPULATION_SIZE_LARGE = 10;
 const size_t POPULATION_SIZE_SMALL = 100;
-const size_t GENETIC_ITER_LARGE = 100;
+const size_t GENETIC_ITER_LARGE = 150;
 const size_t GENETIC_ITER_SMALL = 500;
-const double POPULATION_RATIO = 0.5;
+const double POPULATION_RATIO = 0.4;
 const double MUTATION_RATIO = 0.05;
 const double INIT_NEW = 0.9;
+
 
 bool isLog = false;
 bool isDebug = isLog;
@@ -172,7 +174,7 @@ void PrintAnswer( const std::vector<Point> & points, const std::vector<vertex_t>
 	std::cout << std::endl;
 }
 
-bool MakeRandomReverse( const std::vector<Point> & points, std::vector<vertex_t> & hamPath )
+inline bool MakeRandomReverse( const std::vector<Point> & points, std::vector<vertex_t> & hamPath, size_t iteration = 0 )
 {
 	size_t n = hamPath.size();
 	size_t left = std::rand() % n;
@@ -184,10 +186,13 @@ bool MakeRandomReverse( const std::vector<Point> & points, std::vector<vertex_t>
 	diff += Point::Distance( points[hamPath[right]], points[hamPath[( right + 1 ) % n]] );
 	diff -= Point::Distance( points[hamPath[left - 1]], points[hamPath[right]] );
 	diff -= Point::Distance( points[hamPath[( right + 1 ) % n]], points[hamPath[left]] );
-	if( diff > 1e-6 ) {
+	double annealingProb = 0;
+	if (iteration != 0) annealingProb = std::exp( iteration * diff / 100000 );
+	if( diff > 1e-6 || static_cast<double>( std::rand() ) / RAND_MAX < annealingProb ) {
 		std::reverse( hamPath.begin() + left, hamPath.begin() + right + 1 );
 		return true;
 	}
+
 	return false;
 }
 
@@ -226,10 +231,9 @@ void GenerateInitialPopulation( const std::vector<Point>& points,
 void MakeRandomSwap( const std::vector<Point>& points, std::vector<vertex_t>& hamPath )
 {
 	size_t n = hamPath.size();
-	size_t left = std::rand() % n;
+	size_t left = std::rand() % ( n - 1 );
 	if( left == 0 ) ++left;
-	size_t right = left + std::rand() % ( n - left );
-	if( left == right ) return;
+	size_t right = left + 1;
 	double diff = 0;
 	diff += Point::Distance( points[hamPath[left - 1]], points[hamPath[left]] );
 	diff += Point::Distance( points[hamPath[left + 1]], points[hamPath[left]] );
@@ -466,6 +470,7 @@ int main( int argc, char* argv[] )
 	assert( std::set<size_t>( hamPathAfterRandom.begin(), hamPathAfterRandom.end() ).size() == n );
 
 	std::vector<vertex_t> geneticBest( hamPathAfterRandom.begin(), hamPathAfterRandom.end() );
+	
 	if( true || ENABLE_GENETIC && n < MEMORY_LIMIT ) {
 		std::copy( hamPathAfterRandom.begin(), hamPathAfterRandom.end(), population[0].begin() );
 		GenerateInitialPopulation( points, population, hamPathAfterRandom, static_cast<size_t> ( initFirst * INIT_NEW ) );
